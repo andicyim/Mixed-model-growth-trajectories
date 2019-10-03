@@ -21,18 +21,6 @@ knitr::opts_chunk$set(echo = TRUE)
 
 fullpath <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(file.path(fullpath, "Data"))
-install.packages("rmarkdown")
-install.packages("raster")
-install.packages("rgdal")
-install.packages("lattice")
-install.packages("scatterplot3d")
-install.packages("ggplot2")
-install.packages("RColorBrewer")
-install.packages("gridExtra")
-install.packages("mice")
-install.packages("brms")
-install.packages("rstan")
-
 library(MASS)
 ```
 
