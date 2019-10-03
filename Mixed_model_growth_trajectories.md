@@ -1,22 +1,28 @@
 ---
 title: "A mixed model approach to study human growth trajectories (working title)"
 author: "An-Di Yim, Libby Cowgill, David C. Katz, Charles C Roseman"
-output:
+output: 
   html_document:
     toc: yes
     toc_depth: '2'
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '50%', fig.align = "center")
+  options(width = 90)
 ```
 
 # Set up
 
 ```{r set up, results='hide'}
 
-fullpath <- dirname(rstudioapi::getSourceEditorContext()$path)
-setwd(file.path(fullpath, "Data"))
+fullpath <- "D:/Dropbox/UIUC/Research projects/Grant Proposal/Dissertation/Data"
+# Somehow the following won't knit
+#dirname(rstudioapi::getSourceEditorContext()$path)
+#setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 library(MASS)
 ```
 
@@ -70,10 +76,10 @@ Then, get climatic variables from PaleoClim database:
 # This data is available for download at: http://www.paleoclim.org/
 
 # Mid-Holocene bioclimatic variable layers
-MH_raster <- stack(list.files(path = file.path(fullpath, "Data/Mid_Holocene"), full.names = TRUE, pattern = ".tif")[seq(1, 95, by =5)])
+MH_raster <- stack(list.files(path = file.path(fullpath, "./Mid_Holocene"), full.names = TRUE, pattern = ".tif")[seq(1, 95, by =5)])
 
 # Late Holocene bioclimatic variable layers
-LH_raster <- stack(list.files(path = file.path(fullpath, "Data/Late_Holocene"), full.names = TRUE, pattern = "tif")[seq(1, 95, by =5)])
+LH_raster <- stack(list.files(path = file.path(fullpath, "./Late_Holocene"), full.names = TRUE, pattern = "tif")[seq(1, 95, by =5)])
 
 # Only want bioclimatic variables 1, 5 and 6
 MH_raster <- MH_raster[[c(1, 15, 16)]]
@@ -866,7 +872,7 @@ First I want to fit a null model, which is just a multivariate linear model:
 
 $\mathbf{Y} = \mathbf{X}\beta + \epsilon$
 
-```{r null model}
+```{r null model, warning=FALSE, message=FALSE}
 # So I need to deal missing values first.
 # (Still wondering what is the best approach here)
 library(mice)
@@ -879,16 +885,18 @@ library(rstan)
 # It took a while to run
 # So maybe impute missing values first and then just do a lm is a better approach? Discuss.
 femur.null <- brm(mvbind(Fem_MaxL, Fem_HD, Fem_MidAP, Fem_MidML, Fem_DW) ~ Age + Wt + Lifestyle +
-                   Ann.Temp + Warm.Temp + Cold.Temp, data = femur)
+                   Ann.Temp + Warm.Temp + Cold.Temp, data = femur,
+                  family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"))
 
 
 tibia.null <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ Age + Wt + Lifestyle +
-                   Ann.Temp + Warm.Temp + Cold.Temp, data = tibia)
+                   Ann.Temp + Warm.Temp + Cold.Temp, data = tibia,
+                  family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"))
 
 ```
 
 And to get the summary output:
-```{r outut from the null model}
+```{r outut from the null model, warning=FALSE}
 summary(femur.null)
 
 # Plot fitted regression line against real data
@@ -971,7 +979,7 @@ Then let's try to fit a model with random effects (population structure). So it 
 **Level 1:** $Y = \beta_{0} + X_{i}\beta_{i} + \epsilon$
 **Level 2:** $\beta_{0} = Z_{i}\mu_{i}$
 
-```{r mixed model 1 - no climatic variable}
+```{r mixed model 1 - no climatic variable, warning=FALSE}
 # So this model will NOT have climatic variables as predictor
 
 # Multivariate response variables: all femur measurements
@@ -980,7 +988,8 @@ Then let's try to fit a model with random effects (population structure). So it 
 # This is the same as MCMCglmm (I think)
 # (This model will take a while to run)
 femur.no.climate <- brm(mvbind(Fem_MaxL, Fem_HD, Fem_MidAP, Fem_MidML, Fem_DW) ~ Age + Wt + Lifestyle +
-                          (1|2|Sample), data = femur, cov_ranef = list(Sample = Amat.linear), control = list(adapt_delta = 0.99))
+                          (1|2|Sample), data = femur, cov_ranef = list(Sample = Amat.linear), 
+                        family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"))
 
 
 summary(femur.no.climate)
@@ -1029,8 +1038,9 @@ ggplot() +
 
 
 # We can do the same with tibia measurements:
-tibia.no.climate <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML + Tib_DAP) ~ Age + Wt + Lifestyle +
-                          (1|2|Sample), data = tibia, cov_ranef = list(Sample = Amat.linear), control = list(adapt_delta = 0.99))
+tibia.no.climate <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ Age + Wt + Lifestyle +
+                          (1|2|Sample), data = tibia, cov_ranef = list(Sample = Amat.linear),
+                        family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"))
 
 summary(tibia.no.climate)
 
@@ -1057,7 +1067,7 @@ Now fit the second mixed model (third overall), this time I will include BOTH cl
 
 femur.all <- brm(mvbind(Fem_MaxL, Fem_HD, Fem_MidAP, Fem_MidML, Fem_DW) ~ Age + Wt + Lifestyle + Ann.Temp +
                    Warm.Temp + Cold.Temp + (1|2|Sample), data = femur, cov_ranef = list(Sample = Amat.linear), 
-                 control = list(adapt_delta = 0.99))
+                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"))
 
 summary(femur.all)
 
@@ -1070,7 +1080,7 @@ pp_check(femur.all, resp = "FemMidAP")
 pp_check(femur.all, resp = "FemMidML")
 pp_check(femur.all, resp = "FemDW")
 
-tibia.all <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML + Tib_DAP) ~ Age + Wt + Lifestyle +
+tibia.all <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ Age + Wt + Lifestyle +
                    Ann.Temp + Warm.Temp + Cold.Temp + (1|2|Sample), 
                  data = tibia, cov_ranef = list(Sample = Amat.linear), control = list(adapt_delta = 0.99))
 
@@ -1117,4 +1127,79 @@ pp_check(tibia.all, resp = "TibDML")
 pp_check(tibia.all, resp = "TibDAP")
 ```
 
-After fitting all three models, there are some follow up analyses that need to be done. These include model comparison and variable selection. First we start by doing a model comparison between the three models:
+From the figure above, it is clear that a fixed slope for age is not appropriate, I am now going to fit a random slope model where the slope for age will vary by population. So the model will take the form of:
+**Level 1:** $Y = \beta_{0} + X_{i}\beta_{i} + \epsilon$
+**Level 2:** $\beta_{0} = Z_{i}\mu_{i}, \beta_{age} = Z_{i}\mu_{i}$
+
+```{r random slope model for age}
+
+femur.rs.age <- brm(mvbind(Fem_MaxL, Fem_HD, Fem_MidAP, Fem_MidML, Fem_DW) ~ Age + Wt + Lifestyle + Ann.Temp +
+                   Warm.Temp + Cold.Temp + (1 + Age|2|Sample), data = femur, cov_ranef = list(Sample = Amat.linear), 
+                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"))
+
+summary(femur.rs.age)
+
+pp_check(femur.rs.age, resp = "FemMaxL")
+pp_check(femur.rs.age, resp = "FemHD")
+pp_check(femur.rs.age, resp = "FemMidAP")
+pp_check(femur.rs.age, resp = "FemMidML")
+pp_check(femur.rs.age, resp = "FemDW")
+
+# Fit the model to the data to get the fitted line
+predicted.femur.rs.age <- predict(femur.rs.age, newdata = predicted)
+predicted.femur.rs.age <- as.data.frame(predicted.femur.rs.age)
+predicted.femur.rs.age <- cbind(predicted, predicted.femur.rs.age)
+
+# Plot the fitted line
+ggplot() +
+  geom_smooth(aes(x = Age, y = Estimate.FemMaxL, colour = Sample), method = "loess",
+              se = FALSE, data = predicted.femur.rs.age) +
+  geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_MaxL, colour = Sample), 
+            se = FALSE, data = femur, alpha = 0.5, linetype = "dashed", size = 1.5) +
+  ylab("Femur diaphyseal length") +
+  xlab("Age")
+
+ggplot() +
+  geom_smooth(aes(x = Age, y = Estimate.FemHD, colour = Sample), method = "loess",
+              se = FALSE, data = predicted.femur.rs.age) +
+  geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_HD, colour = Sample), 
+            se = FALSE, data = femur, alpha = 0.5, linetype = "dashed", size = 1.5) +
+  ylab("Femoral head diameter") +
+  xlab("Age")
+
+ggplot() +
+  geom_smooth(aes(x = Age, y = Estimate.FemDW, colour = Sample), method = "loess",
+              se = FALSE, data = predicted.femur.rs.age) +
+  geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_DW, colour = Sample), 
+            se = FALSE, data = femur, alpha = 0.5, linetype = "dashed", size = 1.5) +
+  ylab("Femur distal breadth") +
+  xlab("Age")
+
+
+tibia.rs.age <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ Age + Wt + Lifestyle +
+                   Ann.Temp + Warm.Temp + Cold.Temp + (1 + Age|2|Sample), 
+                 data = tibia, cov_ranef = list(Sample = Amat.linear),
+                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"))
+
+
+summary(tibia.rs.age)
+
+pp_check(tibia.rs.age, resp = "TibMaxL")
+pp_check(tibia.rs.age, resp = "TibPW")
+pp_check(tibia.rs.age, resp = "TibMidAP")
+pp_check(tibia.rs.age, resp = "TibMidML")
+pp_check(tibia.rs.age, resp = "TibDML")
+pp_check(tibia.rs.age, resp = "TibDAP")
+
+```
+
+Clearly we don't need three climatic variables. Therefore I think it'd be worthwhile to conduct a vaiable selection.
+
+```{r variable selection}
+library(sjstats)
+library(sjmisc)
+
+
+
+```
+
