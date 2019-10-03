@@ -1,8 +1,8 @@
-# Title: Both lifestyle and climate predict changes in growth trajectories in modern humans: a mixed model approach
+# Both lifestyle and climate predict changes in growth trajectories in modern humans: a mixed model approach
 
 ## An-Di Yim<sup>1</sup>, Libby Cowgill<sup>2</sup>, David C Katz<sup>3</sup>, and Charles C Roseman<sup>4</sup>
 
-### Affiliations:
+### Affiliations
 <sup>1</sup> Department of Anthropology, University of Illinois at Urbana-Champaign
 <sup>2</sup> Department of Anthropology, University of Missouri
 <sup>3</sup> Department of Cell Biology and Anatomy, University of Calgary
