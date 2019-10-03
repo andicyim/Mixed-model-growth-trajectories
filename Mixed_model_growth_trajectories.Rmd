@@ -2,7 +2,10 @@
 title: "A mixed model approach to study human growth trajectories (working title)"
 author: "An-Di Yim, Libby Cowgill, David C. Katz, Charles C Roseman"
 output:
-  rmarkdown::github_document
+  rmarkdown::github_document:
+    html_preview: true
+    toc: yes
+    toc_depth: '2'
   html_document:
     toc: yes
     toc_depth: '2'
