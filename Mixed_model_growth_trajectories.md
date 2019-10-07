@@ -1,7 +1,10 @@
 ---
-title: "A mixed model approach to study human growth trajectories (working title)"
-author: "An-Di Yim, Libby Cowgill, David C. Katz, Charles C Roseman"
+title: "A mixed model approach to study human growth trajectories"
+author: "An-Di Yim, Libby Cowgill, David C. Katz, Charles C. Roseman"
 output: 
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
   html_document:
     toc: yes
     toc_depth: '2'
@@ -11,13 +14,11 @@ output:
   knitr::opts_chunk$set(echo = TRUE)
   knitr::opts_chunk$set(message = FALSE)
   knitr::opts_chunk$set(warning = FALSE)
-  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '50%', fig.align = "center")
-  options(width = 90)
 ```
 
 # Set up
 
-```{r set up, results='hide'}
+```{r set up}
 
 fullpath <- "D:/Dropbox/UIUC/Research projects/Grant Proposal/Dissertation/Data"
 # Somehow the following won't knit
@@ -818,7 +819,6 @@ Dmax.Amatrix <- function(dist.mat){
 First, we need a population relationship matrix. To do that, we need a matrix of distances between populations.
 
 ```{r mixed model set up}
-#ThankyouDavid #Youarethebest
 
 # This is the input format for David's function
 arch_pop <- as.data.frame(matrix(c(40.80, -123.80, "Cal Amerindian", "NAmerica",
@@ -864,6 +864,9 @@ Since we populate the A matrix __*directly*__, we are now ready to conduct the m
 
 *Reference:* Bürkner, P. C. (2017). brms: An R package for Bayesian multilevel models using Stan. *Journal of Statistical Software*, 80(1), 1-28.
 
+*Reference:* Lüdecke, D. (2018). sjstats: Statistical functions for regression models. R package version 0.14, 3.
+
+
 I am using `brms` package instead of `MCMCglmm` package because it is more flexible in model building and variable selection. The syntax is similar to `lme4` package, which allows me to specify **both** random intercept and random slope (this will hopefully be useful when we're ready to publish).
 
 *Reference:* Bürkner, P. C. (2017). Advanced Bayesian multilevel modeling with the R package brms. *arXiv preprint arXiv:1705.11123.*
@@ -872,35 +875,44 @@ First I want to fit a null model, which is just a multivariate linear model:
 
 $\mathbf{Y} = \mathbf{X}\beta + \epsilon$
 
-```{r null model, warning=FALSE, message=FALSE}
+```{r null model, results="hide"}
 # So I need to deal missing values first.
 # (Still wondering what is the best approach here)
 library(mice)
+# This package is in case in the future I need to impute missing data first before running all the models
 library(brms)
 library(rstan)
+library(sjstats)
+library(sjmisc)
 
-# This is using Bayesian linear model to deal with missing data
-# I am using the default setting to generate 4 MCMC chains, each with 2000 iterations and 1000 burn-in
-# Consider changing this later
+# I am generating 2 MCMC chains, with 10000 iterations and 5000 burn-in, thinning rate is 5
+# Will be changing this later as well as other parameters
 # It took a while to run
-# So maybe impute missing values first and then just do a lm is a better approach? Discuss.
+
 femur.null <- brm(mvbind(Fem_MaxL, Fem_HD, Fem_MidAP, Fem_MidML, Fem_DW) ~ Age + Wt + Lifestyle +
                    Ann.Temp + Warm.Temp + Cold.Temp, data = femur,
-                  family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"))
+                  family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"),
+                  chains = 2, iter = 10000, warmup = 5000, thin = 5)
 
 
 tibia.null <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ Age + Wt + Lifestyle +
                    Ann.Temp + Warm.Temp + Cold.Temp, data = tibia,
-                  family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"))
+                  family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"),
+                  chains = 2, iter = 10000, warmup = 5000, thin = 5)
 
 ```
 
 And to get the summary output:
-```{r outut from the null model, warning=FALSE}
-summary(femur.null)
 
-# Plot fitted regression line against real data
+```{r outut from the null model}
+tidy_stan(femur.null, prob = .95)
+
+# The null model shows hunter-gatherers have the smallest femur among the three lifestyles, followed by industrialized populations.
+# Increase in annual temperature lead to decrease in most dimensions while increase in warmest temp or coldest temp lead to increase in all the dimensions
+
+# Let's try plot fitted regression line against real data
 # Extract all the variables from previous data sets
+
 predicted <- data.frame(cbind(as.character(archae_data$Sample), archae_data$Age, archae_data$Wt))
 names(predicted) <- c("Sample", "Age", "Wt")
 predicted <- merge(predicted, eco.variable, by = "Sample")
@@ -912,7 +924,7 @@ predicted.femur.null <- predict(femur.null, newdata = predicted)
 predicted.femur.null <- as.data.frame(predicted.femur.null)
 predicted.femur.null <- cbind(predicted, predicted.femur.null)
 
-ggplot() +
+fem_l.null.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemMaxL, colour = Sample), method = "lm",
               se = FALSE, data = predicted.femur.null) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_MaxL, colour = Sample), 
@@ -920,7 +932,7 @@ ggplot() +
   ylab("Femur diaphyseal length") +
   xlab("Age")
 
-ggplot() +
+fem_head.null.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemHD, colour = Sample), method = "lm",
               se = FALSE, data = predicted.femur.null) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_HD, colour = Sample), 
@@ -928,7 +940,7 @@ ggplot() +
   ylab("Femoral head diameter") +
   xlab("Age")
 
-ggplot() +
+fem_bi.null.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemDW, colour = Sample), method = "lm",
               se = FALSE, data = predicted.femur.null) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_DW, colour = Sample), 
@@ -936,17 +948,27 @@ ggplot() +
   ylab("Femur distal breadth") +
   xlab("Age")
 
+layout1 <- rbind(c(1, 1),
+                c(2, 3))
 
+grid.arrange(fem_l.null.fit, 
+             fem_head.null.fit, fem_bi.null.fit, layout_matrix = layout1)
+
+# Dashed line is the "true model" (our data) while the solid line is the fitted regression line
 # So our null model apparently didn't fit the model well
 # Distal width of the femur has the worst fit out of the three I plotted here
 
-summary(tibia.null)
+tidy_stan(tibia.null, prob = 0.95)
+
+# Similar effects as femur (tibia dimensions: agriculturalists > hunter-gatherers > industrialized)
+# Increase in mean annual temp: increase in tibia dimensions while increase in warm temp/cold temp: decrease tibia dimensions
+# Significance levels for effect estimates more variable
 
 predicted.tibia.null <- predict(tibia.null, newdata = predicted)
 predicted.tibia.null <- as.data.frame(predicted.tibia.null)
 predicted.tibia.null <- cbind(predicted, predicted.tibia.null)
 
-ggplot() +
+tib_l.null.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.TibMaxL, colour = Sample), method = "lm",
               se = FALSE, data = predicted.tibia.null) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Tib_MaxL, colour = Sample), 
@@ -954,7 +976,7 @@ ggplot() +
   ylab("Tibia diaphyseal length") +
   xlab("Age")
 
-ggplot() +
+tib_bw.null.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.TibPW, colour = Sample), method = "lm",
               se = FALSE, data = predicted.tibia.null) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Tib_PW, colour = Sample), 
@@ -962,7 +984,7 @@ ggplot() +
   ylab("Tibia proximal breadth") +
   xlab("Age")
 
-ggplot() +
+tib_dml.null.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.TibDML, colour = Sample), method = "lm",
               se = FALSE, data = predicted.tibia.null) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Tib_DML, colour = Sample), 
@@ -970,41 +992,96 @@ ggplot() +
   ylab("Tibia distal breadth") +
   xlab("Age")
 
+grid.arrange(tib_l.null.fit, 
+             tib_bw.null.fit, tib_dml.null.fit, layout_matrix = layout1)
+
 # Same thing with tibia, very poor fit
 
 ```
 
 
 Then let's try to fit a model with random effects (population structure). So it has two levels: population-level and individual level
+
 **Level 1:** $Y = \beta_{0} + X_{i}\beta_{i} + \epsilon$
+
 **Level 2:** $\beta_{0} = Z_{i}\mu_{i}$
 
-```{r mixed model 1 - no climatic variable, warning=FALSE}
+```{r mixed model 1 - no climatic variable, results="hide"}
 # So this model will NOT have climatic variables as predictor
 
 # Multivariate response variables: all femur measurements
 # Fixed effects: age, body mass, lifestyle (categorical variable)
+# NOTE: I should probably fit a model without lifestyle but with climatic variables
+# to test whether it is an important factor to consider
+# will do that later.
 # Random effects: population structure. I am only modeling intercept as random here (so each population will have a different intercept, which is distributed with some variance)
 # This is the same as MCMCglmm (I think)
-# (This model will take a while to run)
+
 femur.no.climate <- brm(mvbind(Fem_MaxL, Fem_HD, Fem_MidAP, Fem_MidML, Fem_DW) ~ Age + Wt + Lifestyle +
                           (1|2|Sample), data = femur, cov_ranef = list(Sample = Amat.linear), 
-                        family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"))
+                        family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"),
+                        chains = 2, iter = 10000, warmup = 5000, thin = 5)
 
 
+tibia.no.climate <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ Age + 
+                          Wt + Lifestyle + (1|2|Sample), data = tibia, 
+                        cov_ranef = list(Sample = Amat.linear),
+                    family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"),
+                    chains = 2, iter = 10000, warmup = 5000, thin = 5)
+
+```
+
+The results of the model fit are as follow:
+```{r mixed mocel 1 - results}
 summary(femur.no.climate)
 
-# Posterior predictive check
-layout(matrix(c(1, 1,
-                2, 3,
-                4, 5), 2, 3, byrow = TRUE))
-pp_check(femur.no.climate, resp = "FemMaxL")
-pp_check(femur.no.climate, resp = "FemHD")
-pp_check(femur.no.climate, resp = "FemMidAP")
-pp_check(femur.no.climate, resp = "FemMidML")
-pp_check(femur.no.climate, resp = "FemDW")
+# Age becomes the only significant effect.
+# Effect estimates still follow the patterns established in the null model.
 
-# So it looks like midshaft AP diameter is really poorly predicted based on our model parameters
+summary(tibia.no.climate)
+
+# Similarly, age is the most important effect.
+# Hunter-gatherers have the greatest tibia midshaft AP diameter (but the effect estimate is not significant).
+
+# Posterior predictive check
+pp.fem_l.no.climate <- pp_check(femur.no.climate, resp = "FemMaxL")
+pp.fem_head.no.climate <- pp_check(femur.no.climate, resp = "FemHD")
+pp.fem_midap.no.climate <- pp_check(femur.no.climate, resp = "FemMidAP")
+pp.fem_midml.no.climate <- pp_check(femur.no.climate, resp = "FemMidML")
+pp.fem_bi.no.climate <- pp_check(femur.no.climate, resp = "FemDW")
+
+layout2 <- rbind(c(1,1),
+                 c(2,3),
+                 c(4,5))
+grid.arrange(pp.fem_l.no.climate, 
+             pp.fem_midap.no.climate, pp.fem_midml.no.climate,
+             pp.fem_head.no.climate, pp.fem_bi.no.climate, layout_matrix = layout2)
+
+# Top row: posterior distribution for femoral length
+# Middle row: (L to R) posterior distribution for femoral midshaft AP diameter and midshaft ML diameter
+# Bottom row: (L to R) posterior distribution for femoral head and bicondylar width (distal breadth)
+# (I think) black line is the data while the light gray/blue lines are the simulated response based on the model fit
+# Overall the fit is not bad (but also not great). A lot of the distribution of y's are not accounted for
+
+pp.tib_l.no.climate <- pp_check(tibia.no.climate, resp = "TibMaxL")
+pp.tib_bw.no.climate <-pp_check(tibia.no.climate, resp = "TibPW")
+pp.tib_midap.no.climate <- pp_check(tibia.no.climate, resp = "TibMidAP")
+pp.tib_midml.no.climate <- pp_check(tibia.no.climate, resp = "TibMidML")
+pp.tib_dap.no.climate <- pp_check(tibia.no.climate, resp = "TibDML")
+pp.tib_dml.no.climate <- pp_check(tibia.no.climate, resp = "TibDAP")
+
+layout3 <- rbind(c(1,2),
+                 c(3,4),
+                 c(5,6))
+
+grid.arrange(pp.tib_l.no.climate, pp.tib_bw.no.climate,
+             pp.tib_midap.no.climate, pp.tib_midml.no.climate,
+             pp.tib_dap.no.climate, pp.tib_dml.no.climate, layout_matrix = layout3)
+
+# Top row: (L to R) posterior distribution for tibia length and tibia bicondylar width (proximal breadth)
+# Middle row: (L to R) posterior distribution for tibia midshaft AP diameter and midshaft ML diameter
+# Bottom row: (L to R) posterior distribution for tibia distal AP diameter and distal ML diameter
+# Same thing here, it looks like climatic factor is rather important in explaining at least part of the variation
 
 # Fit the model to the data to get the fitted line
 predicted.femur.no.climate <- predict(femur.no.climate, newdata = predicted)
@@ -1012,7 +1089,7 @@ predicted.femur.no.climate <- as.data.frame(predicted.femur.no.climate)
 predicted.femur.no.climate <- cbind(predicted, predicted.femur.no.climate)
 
 # Plot the fitted line
-ggplot() +
+fem_l.no.climate.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemMaxL, colour = Sample), method = "loess",
               se = FALSE, data = predicted.femur.no.climate) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_MaxL, colour = Sample), 
@@ -1020,7 +1097,7 @@ ggplot() +
   ylab("Femur diaphyseal length") +
   xlab("Age")
 
-ggplot() +
+fem_head.no.climate.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemHD, colour = Sample), method = "loess",
               se = FALSE, data = predicted.femur.no.climate) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_HD, colour = Sample), 
@@ -1028,7 +1105,7 @@ ggplot() +
   ylab("Femoral head diameter") +
   xlab("Age")
 
-ggplot() +
+fem_bi.no.climate.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemDW, colour = Sample), method = "loess",
               se = FALSE, data = predicted.femur.no.climate) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_DW, colour = Sample), 
@@ -1036,55 +1113,75 @@ ggplot() +
   ylab("Femur distal breadth") +
   xlab("Age")
 
+grid.arrange(fem_l.no.climate.fit,
+             fem_head.no.climate.fit, fem_bi.no.climate.fit, layout_matrix = layout1)
 
-# We can do the same with tibia measurements:
-tibia.no.climate <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ Age + Wt + Lifestyle +
-                          (1|2|Sample), data = tibia, cov_ranef = list(Sample = Amat.linear),
-                        family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"))
-
-summary(tibia.no.climate)
-
-layout(matrix(c(1, 2,
-                3, 4,
-                5, 6), 2, 3, byrow = TRUE))
-pp_check(tibia.no.climate, resp = "TibMaxL")
-pp_check(tibia.no.climate, resp = "TibPW")
-pp_check(tibia.no.climate, resp = "TibMidAP")
-pp_check(tibia.no.climate, resp = "TibMidML")
-pp_check(tibia.no.climate, resp = "TibDML")
-pp_check(tibia.no.climate, resp = "TibDAP")
+# Same as above, dashed line is the "true model" (our data) while the solid line is the fitted regression line
+# Overall the fit is not great
 
 ```
 
-Now fit the second mixed model (third overall), this time I will include BOTH climatic variables and 
 
-```{r mixed model 2 - climatic variables}
+Now fit the second mixed model (third overall), this time I will include **BOTH** climatic variables and random term.
+
+```{r mixed model 2 - climatic variables, results="hide"}
 
 # Multivariate response variables: all femur measurements
 # Fixed effects: age, body mass, lifestyle (categorical variable) + all climatic variables (temperature)
 # Random effects: population structure.
-# (This model will take a while to run)
 
 femur.all <- brm(mvbind(Fem_MaxL, Fem_HD, Fem_MidAP, Fem_MidML, Fem_DW) ~ Age + Wt + Lifestyle + Ann.Temp +
-                   Warm.Temp + Cold.Temp + (1|2|Sample), data = femur, cov_ranef = list(Sample = Amat.linear), 
-                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"))
-
-summary(femur.all)
-
-layout(matrix(c(1, 1,
-                2, 3,
-                4, 5), 2, 3, byrow = TRUE))
-pp_check(femur.all, resp = "FemMaxL")
-pp_check(femur.all, resp = "FemHD")
-pp_check(femur.all, resp = "FemMidAP")
-pp_check(femur.all, resp = "FemMidML")
-pp_check(femur.all, resp = "FemDW")
+                   Warm.Temp + Cold.Temp + (1|2|Sample), data = femur, cov_ranef = list(Sample = Amat.linear),                  family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"),
+                 chains = 2, iter = 10000, warmup = 5000, thin = 5)
 
 tibia.all <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ Age + Wt + Lifestyle +
                    Ann.Temp + Warm.Temp + Cold.Temp + (1|2|Sample), 
-                 data = tibia, cov_ranef = list(Sample = Amat.linear), control = list(adapt_delta = 0.99))
+                 data = tibia, cov_ranef = list(Sample = Amat.linear),
+                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"),
+                 chains = 2, iter = 10000, warmup = 5000, thin = 5)
+
+```
+
+The summary for model 2 (all variables):
+```{r mixed model 2 - results}
+summary(femur.all)
+
+# Most of the fixed effects are not significant except for age.
 
 summary(tibia.all)
+
+# Same thing here. However, now the overall dimensions of tibia is somewhat different for hunter-gathers and industrialized populations (both still have smaller tibia compared to agriculturalists). The distal breadth of industrialized populations is a bit smaller than hunter-gatherers. Hunter-gatherers also have the largest midshaft AP diameter out of all three lifestyle compared.
+
+pp.fem_l.all <- pp_check(femur.all, resp = "FemMaxL")
+pp.fem_head.all <- pp_check(femur.all, resp = "FemHD")
+pp.fem_midap.all <- pp_check(femur.all, resp = "FemMidAP")
+pp.fem_midml.all <- pp_check(femur.all, resp = "FemMidML")
+pp.fem_bi.all <- pp_check(femur.all, resp = "FemDW")
+
+grid.arrange(pp.fem_l.all, 
+             pp.fem_midap.all, pp.fem_midml.all,
+             pp.fem_head.all, pp.fem_bi.all, layout_matrix = layout2)
+
+# Top row: posterior distribution for femoral length
+# Middle row: (L to R) posterior distribution for femoral midshaft AP diameter and midshaft ML diamter
+# Bottom row: (L to R) posterior distribution for femoral head and bicondylar width (distal breadth)
+# It appears adding climatic factors didn't improve model fit.
+
+pp.tib_l.all <- pp_check(tibia.all, resp = "TibMaxL")
+pp.tib_bw.all <- pp_check(tibia.all, resp = "TibPW")
+pp.tib_midap.all <- pp_check(tibia.all, resp = "TibMidAP")
+pp.tib_midml.all <- pp_check(tibia.all, resp = "TibMidML")
+pp.tib_dml.all <- pp_check(tibia.all, resp = "TibDML")
+pp.tib_dap.all <- pp_check(tibia.all, resp = "TibDAP")
+
+grid.arrange(pp.tib_l.all, pp.tib_bw.all,
+             pp.tib_midap.all, pp.tib_midml.all,
+             pp.tib_dap.all, pp.tib_dml.all, layout_matrix = layout3)
+
+# Top row: posterior distribution for tibia length and tibia bicondylar width (proximal breadth)
+# Middle row: (L to R) posterior distribution for tibia midshaft AP diameter and midshaft ML diamter
+# Bottom row: (L to R) posterior distribution for tibia distal AP diameter and distal ML diameter
+
 
 # Fit the model to the data to get the fitted line
 predicted.femur.all <- predict(femur.all, newdata = predicted)
@@ -1092,7 +1189,7 @@ predicted.femur.all <- as.data.frame(predicted.femur.all)
 predicted.femur.all <- cbind(predicted, predicted.femur.all)
 
 # Plot the fitted line
-ggplot() +
+fem_l.all.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemMaxL, colour = Sample), method = "loess",
               se = FALSE, data = predicted.femur.all) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_MaxL, colour = Sample), 
@@ -1100,7 +1197,7 @@ ggplot() +
   ylab("Femur diaphyseal length") +
   xlab("Age")
 
-ggplot() +
+fem_head.all.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemHD, colour = Sample), method = "loess",
               se = FALSE, data = predicted.femur.all) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_HD, colour = Sample), 
@@ -1108,7 +1205,7 @@ ggplot() +
   ylab("Femoral head diameter") +
   xlab("Age")
 
-ggplot() +
+fem_bi.all.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemDW, colour = Sample), method = "loess",
               se = FALSE, data = predicted.femur.all) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_DW, colour = Sample), 
@@ -1116,34 +1213,80 @@ ggplot() +
   ylab("Femur distal breadth") +
   xlab("Age")
 
-layout(matrix(c(1, 2,
-                3, 4,
-                5, 6), 2, 3, byrow = TRUE))
-pp_check(tibia.all, resp = "TibMaxL")
-pp_check(tibia.all, resp = "TibPW")
-pp_check(tibia.all, resp = "TibMidAP")
-pp_check(tibia.all, resp = "TibMidML")
-pp_check(tibia.all, resp = "TibDML")
-pp_check(tibia.all, resp = "TibDAP")
+grid.arrange(fem_l.all.fit,
+             fem_head.all.fit, fem_bi.all.fit, layout_matrix = layout1)
+
 ```
 
+
 From the figure above, it is clear that a fixed slope for age is not appropriate, I am now going to fit a random slope model where the slope for age will vary by population. So the model will take the form of:
+
 **Level 1:** $Y = \beta_{0} + X_{i}\beta_{i} + \epsilon$
+
 **Level 2:** $\beta_{0} = Z_{i}\mu_{i}, \beta_{age} = Z_{i}\mu_{i}$
 
-```{r random slope model for age}
+
+```{r random slope model for age, results="hide"}
+
+# Multivariate response variables: all femur measurements
+# Fixed effects: age, body mass, lifestyle (categorical variable) + all climatic variables (temperature)
+# Random effects: population structure
+# Slope for age will vary based on population, and is distributed with some form of normal distribution
 
 femur.rs.age <- brm(mvbind(Fem_MaxL, Fem_HD, Fem_MidAP, Fem_MidML, Fem_DW) ~ Age + Wt + Lifestyle + Ann.Temp +
-                   Warm.Temp + Cold.Temp + (1 + Age|2|Sample), data = femur, cov_ranef = list(Sample = Amat.linear), 
-                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"))
+                   Warm.Temp + Cold.Temp + (1 + Age|2|Sample), data = femur, 
+                   cov_ranef = list(Sample = Amat.linear), 
+                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"),
+                 chains = 2, iter = 10000, warmup = 5000, thin = 5)
 
+tibia.rs.age <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ Age + Wt + Lifestyle +
+                   Ann.Temp + Warm.Temp + Cold.Temp + (1 + Age|2|Sample), 
+                 data = tibia, cov_ranef = list(Sample = Amat.linear),
+                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"),
+                 chains = 2, iter = 10000, warmup = 5000, thin = 5)
+
+```
+
+Get the results:
+```{r random slope for age - results}
 summary(femur.rs.age)
 
-pp_check(femur.rs.age, resp = "FemMaxL")
-pp_check(femur.rs.age, resp = "FemHD")
-pp_check(femur.rs.age, resp = "FemMidAP")
-pp_check(femur.rs.age, resp = "FemMidML")
-pp_check(femur.rs.age, resp = "FemDW")
+# These summary statistics output are pretty similar to the above model.
+
+summary(tibia.rs.age)
+
+# Same thing here.
+
+pp.fem_l.rs.age <- pp_check(femur.rs.age, resp = "FemMaxL")
+pp.fem_head.rs.age <- pp_check(femur.rs.age, resp = "FemHD")
+pp.fem_midap.rs.age <- pp_check(femur.rs.age, resp = "FemMidAP")
+pp.fem_midml.rs.age <- pp_check(femur.rs.age, resp = "FemMidML")
+pp.fem_bi.rs.age <- pp_check(femur.rs.age, resp = "FemDW")
+
+grid.arrange(pp.fem_l.rs.age, 
+             pp.fem_midap.rs.age, pp.fem_midml.rs.age,
+             pp.fem_head.rs.age, pp.fem_bi.rs.age, layout_matrix = layout2)
+
+# Top row: posterior distribution for femoral length
+# Middle row: (L to R) posterior distribution for femoral midshaft AP diameter and midshaft ML diamter
+# Bottom row: (L to R) posterior distribution for femoral head and bicondylar width (distal breadth)
+# It appears the fit doesn't change that much
+
+pp.tib_l.rs.age <- pp_check(tibia.rs.age, resp = "TibMaxL")
+pp.tib_bw.rs.age <- pp_check(tibia.rs.age, resp = "TibPW")
+pp.tib_midap.rs.age <- pp_check(tibia.rs.age, resp = "TibMidAP")
+pp.tib_midml.rs.age <- pp_check(tibia.rs.age, resp = "TibMidML")
+pp.tib_dml.rs.age <- pp_check(tibia.rs.age, resp = "TibDML")
+pp.tib_dap.rs.age <- pp_check(tibia.rs.age, resp = "TibDAP")
+
+grid.arrange(pp.tib_l.rs.age, pp.tib_bw.rs.age,
+             pp.tib_midap.rs.age, pp.tib_midml.rs.age,
+             pp.tib_dap.rs.age, pp.tib_dml.rs.age, layout_matrix = layout3)
+
+# Top row: posterior distribution for tibia length and tibia bicondylar width (proximal breadth)
+# Middle row: (L to R) posterior distribution for tibia midshaft AP diameter and midshaft ML diamter
+# Bottom row: (L to R) posterior distribution for tibia distal AP diameter and distal ML diameter
+# Same thing here, maybe some of the fit becomes better?
 
 # Fit the model to the data to get the fitted line
 predicted.femur.rs.age <- predict(femur.rs.age, newdata = predicted)
@@ -1151,7 +1294,7 @@ predicted.femur.rs.age <- as.data.frame(predicted.femur.rs.age)
 predicted.femur.rs.age <- cbind(predicted, predicted.femur.rs.age)
 
 # Plot the fitted line
-ggplot() +
+fem_l.rs.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemMaxL, colour = Sample), method = "loess",
               se = FALSE, data = predicted.femur.rs.age) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_MaxL, colour = Sample), 
@@ -1159,7 +1302,7 @@ ggplot() +
   ylab("Femur diaphyseal length") +
   xlab("Age")
 
-ggplot() +
+fem_head.rs.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemHD, colour = Sample), method = "loess",
               se = FALSE, data = predicted.femur.rs.age) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_HD, colour = Sample), 
@@ -1167,7 +1310,7 @@ ggplot() +
   ylab("Femoral head diameter") +
   xlab("Age")
 
-ggplot() +
+fem_bi.rs.fit <- ggplot() +
   geom_smooth(aes(x = Age, y = Estimate.FemDW, colour = Sample), method = "loess",
               se = FALSE, data = predicted.femur.rs.age) +
   geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_DW, colour = Sample), 
@@ -1175,31 +1318,218 @@ ggplot() +
   ylab("Femur distal breadth") +
   xlab("Age")
 
+grid.arrange(fem_l.rs.fit,
+             fem_head.rs.fit, fem_bi.rs.fit, layout_matrix = layout1)
 
-tibia.rs.age <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ Age + Wt + Lifestyle +
-                   Ann.Temp + Warm.Temp + Cold.Temp + (1 + Age|2|Sample), 
+```
+
+
+As we can see, there are still some randomness to the trajectories that is not modeled (especially the curvature). So next I will try to add a polynomial to the age term. I think a quadratic term should be enough:
+
+**NOTE:** Consider starting with the quadratic term (even in the null model).
+
+**Level 1:** $Y = \beta_{0} + X_{age}\beta_{age} + X^2_{age}\beta_{age_{sq}} + X_{i}\beta_{i} + \epsilon$
+
+**Level 2:** $\beta_{0} = Z_{i}\mu_{i}, \beta_{age} = Z_{i}\mu_{i}, \beta_{age_{sq}} = Z_{j}\mu_{j}$
+
+```{r random slope and polynomial, results="hide"}
+
+# Multivariate response variables: all femur measurements
+# Fixed effects: age, age squared, body mass, lifestyle (categorical variable) + all climatic variables (temperature)
+# Random effects: population structure
+# Slope for age and age squared will vary based on population, and is distributed with some form of normal distribution
+
+femur.poly.age <- brm(mvbind(Fem_MaxL, Fem_HD, Fem_MidAP, Fem_MidML, Fem_DW) ~ poly(Age, degree = 2) + Wt +
+                        Lifestyle + Ann.Temp + Warm.Temp + Cold.Temp + (1 + poly(Age, degree = 2)|2|Sample),
+                      data = femur, cov_ranef = list(Sample = Amat.linear), 
+                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian"),
+                 chains = 2, iter = 10000, warmup = 5000, thin = 5)
+
+# Try: 
+# - control = list(max_treedepth = 15)
+# - increase # of interations
+
+tibia.poly.age <- brm(mvbind(Tib_MaxL, Tib_PW, Tib_MidAP, Tib_MidML, Tib_DML, Tib_DAP) ~ poly(Age, degree = 2)                       + Wt + Lifestyle + Ann.Temp + Warm.Temp + Cold.Temp + 
+                        (1 + poly(Age, degree = 2)|2|Sample), 
                  data = tibia, cov_ranef = list(Sample = Amat.linear),
-                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"))
+                 family = list("gaussian", "gaussian", "lognormal", "gaussian", "gaussian", "lognormal"),
+                 chains = 2, iter = 10000, warmup = 5000, thin = 5)
+```
 
+**NOTE:** Some of the models didn't converge and I will work on tuning the parameters to get them to converge (it might take a while and probably not before abstract submission). But I think the general results will remain the same. So I am going to skip ahead to model comparison for now.
 
-summary(tibia.rs.age)
+```{r random slope and polynomial - results}
+summary(femur.poly.age)
 
-pp_check(tibia.rs.age, resp = "TibMaxL")
-pp_check(tibia.rs.age, resp = "TibPW")
-pp_check(tibia.rs.age, resp = "TibMidAP")
-pp_check(tibia.rs.age, resp = "TibMidML")
-pp_check(tibia.rs.age, resp = "TibDML")
-pp_check(tibia.rs.age, resp = "TibDAP")
+# Both age and age_squared terms are significant.
+# But now increase in annual temp is associated with an increase in femoral head diameter instead of decrease. 
+# Increase in cold and warm temp is associated with decrease in femoral head diameter.
+# It appears either warm temp or cold temp predicts ecogeographic rules better.
+# The model now predicts hunter-gatherers will (on average) have shorter, slender femur with slightly increased AP diameter and a broad femoral head  compared to agriculturalists 
+# Industrialized populations have the greatest midshaft AP diameter out of all three populations compared.
+# This could be due to model not converging.
+
+summary(tibia.poly.age)
+
+# Hunter-gathers have the smallest tibia dimensions except for AP diameter, agriculturalists somewhat in between hunter-gatherers and agriculturalists.
+# This is the same as the above models.
+# Climatic variables predictions are also the same.
+
+pp.fem_l.poly <- pp_check(femur.poly.age, resp = "FemMaxL")
+pp.fem_head.poly <- pp_check(femur.poly.age, resp = "FemHD")
+pp.fem_midap.poly <- pp_check(femur.poly.age, resp = "FemMidAP")
+pp.fem_midml.poly <- pp_check(femur.poly.age, resp = "FemMidML")
+pp.fem_bi.poly <- pp_check(femur.poly.age, resp = "FemDW")
+
+grid.arrange(pp.fem_l.poly, 
+             pp.fem_midap.poly, pp.fem_midml.poly,
+             pp.fem_head.poly, pp.fem_bi.poly, layout_matrix = layout2)
+
+# Top row: posterior distribution for femoral length
+# Middle row: (L to R) posterior distribution for femoral midshaft AP diameter and midshaft ML diamter
+# Bottom row: (L to R) posterior distribution for femoral head and bicondylar width (distal breadth)
+# Now the fit is much better.
+
+pp.tib_l.poly <- pp_check(tibia.poly.age, resp = "TibMaxL")
+pp.tib_bw.poly <- pp_check(tibia.poly.age, resp = "TibPW")
+pp.tib_midap.poly <- pp_check(tibia.poly.age, resp = "TibMidAP")
+pp.tib_midml.poly <- pp_check(tibia.poly.age, resp = "TibMidML")
+pp.tib_dml.poly <- pp_check(tibia.poly.age, resp = "TibDML")
+pp.tib_dap.poly <- pp_check(tibia.poly.age, resp = "TibDAP")
+
+grid.arrange(pp.tib_l.poly, pp.tib_bw.poly,
+             pp.tib_midap.poly, pp.tib_midml.poly,
+             pp.tib_dap.poly, pp.tib_dml.poly, layout_matrix = layout3)
+
+# Top row: posterior distribution for tibia length and tibia bicondylar width (proximal breadth)
+# Middle row: (L to R) posterior distribution for tibia midshaft AP diameter and midshaft ML diamter
+# Bottom row: (L to R) posterior distribution for tibia distal AP diameter and distal ML diameter
+# Now the fit is much better.
+
+# NOTE: Some of these measurements clearly have a bimodal distribution so my number of iterations is definitely not enought.
+
+# Fit the model to the data to get the fitted line
+predicted.femur.poly.age <- predict(femur.poly.age, newdata = predicted)
+predicted.femur.poly.age <- as.data.frame(predicted.femur.poly.age)
+predicted.femur.poly.age <- cbind(predicted, predicted.femur.poly.age)
+
+# Plot the fitted line
+fem_l.poly.fit <- ggplot() +
+  geom_smooth(aes(x = Age, y = Estimate.FemMaxL, colour = Sample), method = "lm",
+              formula = y ~ poly(x, degree = 2),
+              se = FALSE, data = predicted.femur.poly.age) +
+  geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_MaxL, colour = Sample), 
+            se = FALSE, data = femur, alpha = 0.5, linetype = "dashed", size = 1.5) +
+  ylab("Femur diaphyseal length") +
+  xlab("Age")
+
+fem_head.poly.fit <- ggplot() +
+  geom_smooth(aes(x = Age, y = Estimate.FemHD, colour = Sample), method = "lm",
+              formula = y ~ poly(x, degree = 2),
+              se = FALSE, data = predicted.femur.poly.age) +
+  geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_HD, colour = Sample), 
+            se = FALSE, data = femur, alpha = 0.5, linetype = "dashed", size = 1.5) +
+  ylab("Femoral head diameter") +
+  xlab("Age")
+
+fem_bi.poly.fit <- ggplot() +
+  geom_smooth(aes(x = Age, y = Estimate.FemDW, colour = Sample), method = "lm",
+              formula = y ~ poly(x, degree = 2),
+              se = FALSE, data = predicted.femur.poly.age) +
+  geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Fem_DW, colour = Sample), 
+            se = FALSE, data = femur, alpha = 0.5, linetype = "dashed", size = 1.5) +
+  ylab("Femur distal breadth") +
+  xlab("Age")
+
+grid.arrange(fem_l.poly.fit,
+             fem_head.poly.fit, fem_bi.poly.fit, layout_matrix = layout1)
+
+# This is much closer to the actual data.
+# There is still some randomness (interaction?) not modelled, consider including interaction terms later.
+
+predicted.tibia.poly <- predict(tibia.poly.age, newdata = predicted)
+predicted.tibia.poly <- as.data.frame(predicted.tibia.poly)
+predicted.tibia.poly <- cbind(predicted, predicted.tibia.poly)
+
+tib_l.poly.fit <- ggplot() +
+  geom_smooth(aes(x = Age, y = Estimate.TibMaxL, colour = Sample), method = "lm",
+              formula = y ~ poly(x, degree = 2),
+              se = FALSE, data = predicted.tibia.poly) +
+  geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Tib_MaxL, colour = Sample), 
+            se = FALSE, data = tibia, alpha = 0.5, linetype = "dashed", size = 1.5) +
+  ylab("Tibia diaphyseal length") +
+  xlab("Age")
+
+tib_bw.poly.fit <- ggplot() +
+  geom_smooth(aes(x = Age, y = Estimate.TibPW, colour = Sample), method = "lm",
+              formula = y ~ poly(x, degree = 2),
+              se = FALSE, data = predicted.tibia.poly) +
+  geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Tib_PW, colour = Sample), 
+            se = FALSE, data = tibia, alpha = 0.5, linetype = "dashed", size = 1.5) +
+  ylab("Tibia proximal breadth") +
+  xlab("Age")
+
+tib_dml.poly.fit <- ggplot() +
+  geom_smooth(aes(x = Age, y = Estimate.TibDML, colour = Sample), method = "lm",
+              formula = y ~ poly(x, degree = 2),
+              se = FALSE, data = predicted.tibia.poly) +
+  geom_line(stat = "smooth", method = "loess", aes(x = Age, y = Tib_DML, colour = Sample), 
+            se = FALSE, data = tibia, alpha = 0.5, linetype = "dashed", size = 1.5) +
+  ylab("Tibia distal breadth") +
+  xlab("Age")
+
+grid.arrange(tib_l.poly.fit, 
+             tib_bw.poly.fit, tib_dml.poly.fit, layout_matrix = layout1)
 
 ```
 
-Clearly we don't need three climatic variables. Therefore I think it'd be worthwhile to conduct a vaiable selection.
 
-```{r variable selection}
-library(sjstats)
-library(sjmisc)
+Model comparison is based on Bayes $R^{2}$, leave-one-out cross validation, and WAIC (the last two are built into the package, I don't know whether I should/could try to calculate other statistics, will consult with someone)
 
+```{r model comparison}
 
+# First, calculate R square for each models:
+bayes_R2(femur.null)
+bayes_R2(femur.no.climate)
+bayes_R2(femur.all)
+bayes_R2(femur.rs.age)
+bayes_R2(femur.poly.age)
+
+bayes_R2(tibia.null)
+bayes_R2(tibia.no.climate)
+bayes_R2(tibia.all)
+bayes_R2(tibia.rs.age)
+bayes_R2(tibia.poly.age)
+
+# Calculate information criteria
+femur.null <- add_ic(femur.null, c("loo","waic")) 
+femur.no.climate <- add_ic(femur.no.climate, c("loo", "waic"))
+femur.all <- add_ic(femur.all, c("loo","waic"))
+femur.rs.age <- add_ic(femur.rs.age, c("loo","waic"))
+femur.poly.age <- add_ic(femur.poly.age, c("loo","waic"))
+
+tibia.null <- add_ic(tibia.null, c("loo","waic"))
+tibia.no.climate <- add_ic(tibia.no.climate, c("loo","waic"))
+tibia.all <- add_ic(tibia.all, c("loo","waic"))
+tibia.rs.age <- add_ic(tibia.rs.age, c("loo","waic"))
+tibia.poly.age <- add_ic(tibia.poly.age, c("loo","waic"))
+
+matrix(c(femur.null$loo$estimates[3,1], femur.null$waic$estimates[3,1], 
+         tibia.null$loo$estimates[3,1], tibia.null$waic$estimates[3,1],
+       femur.no.climate$loo$estimates[3,1], femur.no.climate$waic$estimates[3,1], 
+       tibia.no.climate$loo$estimates[3,1], tibia.no.climate$waic$estimates[3,1],
+       femur.all$loo$estimates[3,1], femur.all$waic$estimates[3,1], 
+       tibia.all$loo$estimates[3,1], tibia.all$waic$estimates[3,1],
+       femur.rs.age$loo$estimates[3,1], femur.rs.age$waic$estimates[3,1], 
+       tibia.rs.age$loo$estimates[3,1], tibia.rs.age$waic$estimates[3,1],
+       femur.poly.age$loo$estimates[3,1], femur.poly.age$waic$estimates[3,1],
+       tibia.poly.age$loo$estimates[3,1], tibia.poly.age$waic$estimates[3,1]),
+       nrow = 5, ncol = 4, byrow = TRUE, 
+       dimnames = list(c("Null Model", "No Climate Model", "Inclusive Model", "Random Slope Model",
+                         "Polynomial Model"),
+                       c("LOOIC", "WAIC", "LOOIC", "WAIC")))
 
 ```
+
+So the "best" model based on these statistics is the polynomial model with age as a random slope. I think this is enough for AAPA submission, I will be working on model reduction (for example, I think annual temperature can be dropped), tuning parameters (i.e. increase iterations and number of MCMC chains, adjust depth of parameter search and other things) to see if I can get the more complex models to converge. 
 
