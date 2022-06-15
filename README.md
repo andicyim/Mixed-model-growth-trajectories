@@ -1,2 +1,2 @@
 # Mixed-model-growth-trajectories
-All code for my mixed model analysis of growth trajectories
+R code for the manuscript "Variation in ontogenetic trajectories of limb dimensions in humans is attributable to both climatic effects and neutral evolution"
